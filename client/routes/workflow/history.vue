@@ -10,6 +10,7 @@
     <header class="controls">
       <div class="view-format">
         <label for="format">View Format</label>
+        {{ showTimeline }}
         <div class="view-formats">
           <a
             href="#"
@@ -45,6 +46,9 @@
         <a href="#" @click.prevent="toggleShowTimeline()"
           >{{ showTimeline ? "hide" : "show" }} timeline</a
         >
+        <a href="#" @click.prevent="toggleShowDagGraph()"
+          >{{ showDagGraph ? "hide" : "show" }} graph</a
+        >
         <a
           class="export"
           :href="baseAPIURL + '/export'"
@@ -53,6 +57,21 @@
         >
       </div>
     </header>
+    <!--   test for horizontal split
+       <Split style="height:100vh">
+      <SplitArea
+        class="view-split"
+        :min-size="splitSizeMinSet[1]"
+        ref="viewSplit"
+        :size="splitSizeSet[1]"
+      >
+        Left Area
+      </SplitArea>
+      <SplitArea :min-size="splitSizeMinSet[0]" :size="splitSizeSet[0]">
+        Right Area
+      </SplitArea>
+    </Split> -->
+
     <Split
       class="split-panel"
       direction="vertical"
@@ -71,7 +90,24 @@
           :selected-event-id="eventId"
           v-if="showTimeline"
         />
+        <DagGraphContainer
+          :workflow="workflow"
+          :events="events"
+          class="tree-view"
+          v-if="showDagGraph"
+        ></DagGraphContainer>
       </SplitArea>
+      <!-- <SplitArea
+        class="timeline-split"
+        :min-size="splitSizeMinSet[0]"
+        :size="splitSizeSet[0]"
+      >
+        <timeline
+          :events="timelineEvents"
+          :selected-event-id="eventId"
+          v-if="showTimeline"
+        />
+      </SplitArea> -->
       <SplitArea
         class="view-split"
         :min-size="splitSizeMinSet[1]"
@@ -357,6 +393,7 @@ export default {
     "loading",
     "runId",
     "showTimeline",
+    "showDagGraph",
     "timelineEvents",
     "workflowHistoryEventHighlightList",
     "workflowHistoryEventHighlightListEnabled",
@@ -381,6 +418,7 @@ export default {
   mounted() {
     this.setWorkFlow();
     this.splitSizeSet = this.showTimeline ? [20, 80] : [1, 99];
+    this.splitSizeSet = this.showDagGraphf ? [20, 80] : [1, 99];
     this.unwatch.push(
       this.$watch(
         () =>
@@ -568,6 +606,20 @@ export default {
         i.eventIds[i.eventIds.length - 1]
       );
     },
+    toggleShowDagGraph() {
+      if (this.showDagGraph) {
+        this.$router.replace({
+          query: omit(this.$route.query, "showDagGraph")
+        });
+      } else {
+        this.$router.replace({
+          query: {
+            ...this.$route.query,
+            showDagGraph: true
+          }
+        });
+      }
+    },
     toggleShowTimeline() {
       if (this.showTimeline) {
         this.$router.replace({
@@ -575,7 +627,10 @@ export default {
         });
       } else {
         this.$router.replace({
-          query: { ...this.$route.query, showTimeline: true }
+          query: {
+            ...this.$route.query,
+            showTimeline: true
+          }
         });
       }
     }
@@ -595,6 +650,10 @@ export default {
       this.splitSizeSet = this.showTimeline ? [20, 80] : [1, 99];
       this.onSplitResize();
     }
+    /*  showDagGraph() {
+      this.showDagGraph = this.showDagGraph ? [20, 80] : [1, 99];
+      this.onSplitResize();
+    } */
   },
   components: {
     "detail-list": DetailList,
