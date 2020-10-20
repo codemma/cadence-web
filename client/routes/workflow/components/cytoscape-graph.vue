@@ -23,7 +23,7 @@ cytoscape.use(dagre);
 export default {
   name: "cytoscape-graph",
   components: {
-    /*     Legend */
+    /*     Legend  TODO */
   },
   props: ["workflow", "events"],
   data() {
@@ -265,29 +265,22 @@ export default {
           self.lastNodeInView = nodesInView[amountNodesInView - 1].id();
         }
       });
-
-      const t2 = performance.now();
       let container = document.getElementById("cyt");
       cy.mount(container);
-      const t3 = performance.now();
-      console.log(`Call to graph mount took ${t3 - t2} milliseconds.`);
     }
   },
   computed: {
     selectedNode() {
-      return this.$store.getters.selectedNode;
+      return this.$route.query.eventId;
     }
   },
   mounted() {
-    //this.chunkWorkflow();
+    //this.chunkWorkflow(); TODO remove
     this.buildTree().then(() => {
       //Set the current nodes which are rendered of the graph in the store
       store.commit("setRenderedNodes", this.nodes);
     });
-    const t0 = performance.now();
     this.viewInit().then(cy => {
-      const t1 = performance.now();
-      console.log(`Call to view_init took ${t1 - t0} milliseconds.`);
       this.mountGraph(cy);
     });
   }
