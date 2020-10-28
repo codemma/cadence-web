@@ -1,6 +1,5 @@
 <template>
   <div id="cytoscape">
-    <!--     <Legend /> -->
     <div ref="cy" id="cy"></div>
   </div>
 </template>
@@ -12,57 +11,28 @@ import graphStyles from "../helpers/graph-styles";
 import store from "../../../store/index";
 import cytoscape from "cytoscape";
 import omit from "lodash-es/omit";
-/* import Legend from "@/components/Legend.vue"; */
 
 cytoscape.use(dagre);
 
 export default {
   name: "cytoscape-graph",
-  components: {
-    /*     Legend */
-  },
   props: ["events"],
   data() {
     return {
       nodes: [],
       edges: [],
       styles: graphStyles,
-      lastNodeInView: "",
-      lastNodeRendered: "",
-      slicedWorkflow: null,
-      workflowChunk: 0,
       parentArray: []
     };
   },
   watch: {
     selectedEvent(id) {
-      if (id) this.zoomToNode(id);
+      if (id) this.selectNode(id);
     }
   },
   methods: {
-    //  TODO: Function which will be used to divide the workflow in chunks to be rendered
-    chunkWorkflow() {
-      let chunkSize = 300;
-      let groups = this.workflow
-        .map((e, i) => {
-          return i % chunkSize === 0
-            ? this.workflow.slice(i, i + chunkSize)
-            : null;
-        })
-        .filter(e => {
-          return e;
-        });
-      this.slicedWorkflow = groups[this.workflowChunk];
-      this.lastNodeRendered = this.slicedWorkflow[
-        this.slicedWorkflow.length - 1
-      ].eventId;
-    },
-    zoomToNode(id) {
-      //Deselect all previously selected nodes
-      cy.$(":selected").deselect();
-
-      let node = cy.elements("node#" + id),
-        zoom = 1.1,
+    zoomToNode(node) {
+      let zoom = 1.1,
         bb = node.boundingBox(),
         w = cy.width(),
         h = cy.height(),
@@ -71,14 +41,38 @@ export default {
           y: (h - zoom * (bb.y1 + bb.y2)) / 2
         };
 
-      //Mark current node as selected - display its informatiom
-      node.select();
-
       //Pan the graph to view node
       cy.animate({
         zoom: 1.1,
         pan: pan
       });
+    },
+    updateChildBtn(node) {
+      let nodeData = node.data();
+      if (nodeData.childRoute) {
+        store.commit("childRoute", {
+          route: nodeData.childRoute,
+          btnText: "To child"
+        });
+      } else if (nodeData.newExecutionRunId) {
+        store.commit("childRoute", {
+          route: nodeData.newExecutionRunId,
+          btnText: "Next execution"
+        });
+      } else {
+        store.commit("toggleChildBtn");
+      }
+    },
+    selectNode(id) {
+      //Deselect all previously selected nodes
+      cy.$(":selected").deselect();
+
+      //Mark current node as selected
+      let node = cy.elements("node#" + id);
+      node.select();
+
+      this.updateChildBtn(node);
+      this.zoomToNode(node);
     },
     async buildTree() {
       this.events.forEach(event => {
@@ -193,57 +187,24 @@ export default {
             self.$router.replace({ query: omit(self.$route.query, "eventId") });
             store.commit("toggleChildBtn");
           }
-          //Tap on a node
+          //Tap on a node that is not already selected
         } else if (evtTarget.isNode() && !evtTarget.selected()) {
           let nodeData = evtTarget.data();
-
           self.$router.replace({
             query: { ...self.$route.query, eventId: nodeData.id }
           });
-
-          if (nodeData.childRoute) {
-            store.commit("childRoute", {
-              route: nodeData.childRoute,
-              btnText: "To child"
-            });
-          } else if (nodeData.newExecutionRunId) {
-            store.commit("childRoute", {
-              route: nodeData.newExecutionRunId,
-              btnText: "Next execution"
-            });
-          } else {
-            store.commit("toggleChildBtn");
-          }
         }
       });
-
       return cy;
     },
     mountGraph(cy) {
-      //Get root node
+      //TODO: this is not finished
       var pos = cy.nodes("[id = " + 1 + "]").position();
       cy.center();
       cy.zoom({
         // Zoom to the specified position of root node
         level: 1,
         position: pos
-      });
-
-      let self = this;
-
-      //Function to calculate which nodes are in view
-      cy.on("pan", function(evt) {
-        let ext = cy.extent();
-        let nodesInView = cy.nodes().filter(n => {
-          let bb = n.position();
-          return (
-            bb.x > ext.x1 && bb.x < ext.x2 && bb.y > ext.y1 && bb.y < ext.y2
-          );
-        });
-        if (nodesInView.length != 0) {
-          let amountNodesInView = nodesInView.length;
-          self.lastNodeInView = nodesInView[amountNodesInView - 1].id();
-        }
       });
       let container = this.$refs.cy;
       cy.mount(container);
@@ -255,14 +216,12 @@ export default {
     }
   },
   mounted() {
-    //this.chunkWorkflow();
     this.buildTree();
     this.viewInit().then(cy => {
       this.mountGraph(cy);
     });
 
-    if (this.$route.query.eventId !== undefined)
-      this.zoomToNode(this.$route.query.eventId);
+    if (this.$route.query.eventId) this.selectNode(this.$route.query.eventId);
   }
 };
 </script>
