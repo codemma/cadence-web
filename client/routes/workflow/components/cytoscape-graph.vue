@@ -5,147 +5,96 @@
 </template>
 
 <script>
-import dagre from "cytoscape-dagre";
-import { getEventConnections } from "../helpers/get-event-connections";
-import graphStyles from "../helpers/graph-styles";
-import store from "../../../store/index";
-import cytoscape from "cytoscape";
-import omit from "lodash-es/omit";
+import dagre from 'cytoscape-dagre';
+import cytoscape from 'cytoscape';
+import omit from 'lodash-es/omit';
+import { buildTree } from '../helpers/graph';
+import graphStyles from '../helpers/graph-styles';
+import store from '../../../store/index';
 
 cytoscape.use(dagre);
 
 export default {
-  name: "cytoscape-graph",
-  props: ["events"],
+  name: 'cytoscape-graph',
+  props: ['events'],
   data() {
     return {
       nodes: [],
       edges: [],
       styles: graphStyles,
-      parentArray: []
     };
   },
   watch: {
     selectedEvent(id) {
-      if (id) this.selectNode(id);
-    }
+      this.selectNode(id);
+    },
   },
   methods: {
     zoomToNode(node) {
-      let zoom = 1.1,
+      const zoom = 1.1,
         bb = node.boundingBox(),
-        w = cy.width(),
-        h = cy.height(),
+        w = this.cy.width(),
+        h = this.cy.height(),
         pan = {
           x: (w - zoom * (bb.x1 + bb.x2)) / 2,
-          y: (h - zoom * (bb.y1 + bb.y2)) / 2
+          y: (h - zoom * (bb.y1 + bb.y2)) / 2,
         };
 
       //Pan the graph to view node
-      cy.animate({
+      this.cy.animate({
         zoom: 1.1,
-        pan: pan
+        pan: pan,
       });
     },
     updateChildBtn(node) {
-      let nodeData = node.data();
+      const nodeData = node.data();
+
       if (nodeData.childRoute) {
-        store.commit("childRoute", {
+        store.commit('childRoute', {
           route: nodeData.childRoute,
-          btnText: "To child"
+          btnText: 'To child',
         });
       } else if (nodeData.newExecutionRunId) {
-        store.commit("childRoute", {
+        store.commit('childRoute', {
           route: nodeData.newExecutionRunId,
-          btnText: "Next execution"
+          btnText: 'Next execution',
         });
       } else {
-        store.commit("toggleChildBtn");
+        store.commit('toggleChildBtn');
       }
     },
     selectNode(id) {
-      //Deselect all previously selected nodes
-      cy.$(":selected").deselect();
+      // Update graph to render nodes around the select one
+      this.updateView(id);
 
-      //Mark current node as selected
-      let node = cy.elements("node#" + id);
-      node.select();
+      // Deselect all previously selected nodes
+      this.cy.$(':selected').deselect();
 
-      this.updateChildBtn(node);
-      this.zoomToNode(node);
-    },
-    async buildTree() {
-      this.events.forEach(event => {
-        let {
-          parentWorkflowExecution,
-          previousExecutionRunId,
-          newExecutionRunId,
-          status,
-          childRoute
-        } = getEventConnections(event, this.events);
+      // Mark current node as selected
+      const node = id !== null ? this.cy.elements('node#' + id) : null;
 
-        //We are viewing a child workflow, show parent btn
-        if (previousExecutionRunId) {
-          store.commit("previousExecutionRoute", previousExecutionRunId);
-        } else if (parentWorkflowExecution) {
-          store.commit("parentRoute", parentWorkflowExecution);
-        }
-
-        this.nodes.push({
-          data: {
-            id: event.eventId,
-            name: event.eventType,
-            childRoute: childRoute,
-            newExecutionRunId: newExecutionRunId,
-            status: status
-          }
-        });
-      });
-      //Set the direct and inferred relationships
-      this.events.forEach(node => {
-        this.setDirectAndInferred(node);
-      });
-
-      //Set the chronological relationships.
-      //If the node is not referred to as a parent it should be connected back to the graph with a chron child
-      this.events.forEach(node => {
-        if (!this.parentArray.includes(node.eventId)) {
-          this.setChron(node);
-        }
-      });
-    },
-    setDirectAndInferred(node) {
-      let nodeId = node.eventId,
-        { parent, inferredChild } = getEventConnections(node, this.events);
-      if (parent) {
-        this.parentArray.push(parent);
-        this.edges.push({
-          data: { source: parent, target: nodeId, type: "direct" }
-        });
-      }
-      if (inferredChild) {
-        this.parentArray.push(nodeId);
-        this.edges.push({
-          data: { source: nodeId, target: inferredChild, type: "inferred" }
-        });
+      if (!node || !node.length) {
+        // Display whole graph
+        this.cy.fit();
+      } else {
+        // Zoom to the selected node
+        node.select();
+        this.updateChildBtn(node);
+        this.zoomToNode(node);
       }
     },
-    setChron(node) {
-      let nodeId = node.eventId,
-        { chronologicalChild } = getEventConnections(node, this.events);
-      if (chronologicalChild) {
-        this.edges.push({
-          data: {
-            source: nodeId,
-            target: chronologicalChild,
-            type: "chronological"
-          }
-        });
+    updateView(id = null) {
+      const elements = buildTree(this.events, id);
+
+      if (this.cy) {
+        this.cy.unmount();
+        this.cy.destroy();
+        this.cy = null;
       }
-    },
-    async viewInit() {
-      let container = this.$refs.cy;
-      let cy = (window.cy = cytoscape({
+
+      // Create cy instance
+      const container = this.$refs.cy;
+      const cy = cytoscape({
         autoungrabify: true,
         styleEnabled: true,
         container: container,
@@ -155,74 +104,62 @@ export default {
         //textureOnViewport: true,
         //pixelRatio: 1,
         style: graphStyles,
-        elements: {
-          nodes: this.nodes,
-          edges: this.edges
-        },
+        elements,
         layout: {
-          name: "dagre",
+          name: 'dagre',
           nodeDimensionsIncludeLabels: true,
           spacingFactor: 1.2, // to avoid node collision
           nodeSep: 230,
           edgeSep: 100,
-          rankSep: 70
-        }
-      }));
-      cy.on("mouseover", "node", function(e) {
-        container.style.cursor = "pointer";
-      });
-      cy.on("mouseout", "node", function(e) {
-        container.style.cursor = "default";
+          rankSep: 70,
+        },
       });
 
-      let self = this;
+      cy.minZoom(0.2);
+      cy.maxZoom(10);
+
+      cy.on('mouseover', 'node', function(e) {
+        container.style.cursor = 'pointer';
+      });
+      cy.on('mouseout', 'node', function(e) {
+        container.style.cursor = 'default';
+      });
+
+      const self = this;
 
       //Register click event
-      cy.on("tap", function(evt) {
-        let evtTarget = evt.target;
+      cy.on('tap', function(evt) {
+        const evtTarget = evt.target;
 
         //Tap on background
         if (evtTarget === cy) {
           if (self.$route.query.eventId) {
-            self.$router.replace({ query: omit(self.$route.query, "eventId") });
-            store.commit("toggleChildBtn");
+            self.$router.replace({
+              query: omit(self.$route.query, 'eventId'),
+            });
+            store.commit('toggleChildBtn');
           }
           //Tap on a node that is not already selected
         } else if (evtTarget.isNode() && !evtTarget.selected()) {
-          let nodeData = evtTarget.data();
+          const nodeData = evtTarget.data();
+
           self.$router.replace({
-            query: { ...self.$route.query, eventId: nodeData.id }
+            query: { ...self.$route.query, eventId: nodeData.id },
           });
         }
       });
-      return cy;
-    },
-    mountGraph(cy) {
-      //TODO: this is not finished
-      var pos = cy.nodes("[id = " + 1 + "]").position();
-      cy.center();
-      cy.zoom({
-        // Zoom to the specified position of root node
-        level: 1,
-        position: pos
-      });
-      let container = this.$refs.cy;
       cy.mount(container);
-    }
+      this.cy = cy;
+    },
   },
   computed: {
     selectedEvent() {
       return this.$route.query.eventId;
-    }
+    },
   },
   mounted() {
-    this.buildTree();
-    this.viewInit().then(cy => {
-      this.mountGraph(cy);
-    });
-
-    if (this.$route.query.eventId) this.selectNode(this.$route.query.eventId);
-  }
+    this.selectNode(this.$route.query.eventId);
+  },
 };
 </script>
 <style scoped>
