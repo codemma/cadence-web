@@ -8,7 +8,7 @@
 import dagre from 'cytoscape-dagre';
 import cytoscape from 'cytoscape';
 import omit from 'lodash-es/omit';
-import { buildTree } from '../helpers/graph';
+import Graph from '../helpers/graph';
 import graphStyles from '../helpers/graph-styles';
 import store from '../../../store/index';
 
@@ -27,6 +27,9 @@ export default {
   watch: {
     selectedEvent(id) {
       this.selectNode(id);
+    },
+    events(events) {
+      this.graph.setEvents(events);
     },
   },
   methods: {
@@ -83,9 +86,7 @@ export default {
         this.zoomToNode(node);
       }
     },
-    updateView(id = null) {
-      const elements = buildTree(this.events, id);
-
+    initView(elements) {
       if (this.cy) {
         this.cy.unmount();
         this.cy.destroy();
@@ -151,6 +152,27 @@ export default {
       cy.mount(container);
       this.cy = cy;
     },
+    updateView(id = null) {
+      const {
+        shouldRedraw,
+        elements,
+        previousExecutionRunId,
+        parentWorkflowExecution,
+      } = this.graph.selectNode(id);
+
+      if (!shouldRedraw) {
+        return;
+      }
+
+      // We are viewing a child workflow, show parent btn
+      if (previousExecutionRunId) {
+        store.commit('previousExecutionRoute', previousExecutionRunId);
+      } else if (parentWorkflowExecution) {
+        store.commit('parentRoute', parentWorkflowExecution);
+      }
+
+      this.initView(elements);
+    },
   },
   computed: {
     selectedEvent() {
@@ -158,6 +180,7 @@ export default {
     },
   },
   mounted() {
+    this.graph = new Graph(this.events);
     this.selectNode(this.$route.query.eventId);
   },
 };
