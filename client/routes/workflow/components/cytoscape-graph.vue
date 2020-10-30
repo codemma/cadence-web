@@ -12,7 +12,7 @@ import Graph from '../helpers/graph';
 import graphStyles from '../helpers/graph-styles';
 import store from '../../../store/index';
 
-cytoscape.use(dagre);
+// cytoscape.use(dagre);
 
 export default {
   name: 'cytoscape-graph',
@@ -107,17 +107,18 @@ export default {
         style: graphStyles,
         elements,
         layout: {
-          name: 'dagre',
-          nodeDimensionsIncludeLabels: true,
-          spacingFactor: 1.2, // to avoid node collision
-          nodeSep: 230,
-          edgeSep: 100,
-          rankSep: 70,
+          name: 'preset',
+          // name: 'dagre',
+          // nodeDimensionsIncludeLabels: true,
+          // spacingFactor: 1.2, // to avoid node collision
+          // nodeSep: 230,
+          // edgeSep: 100,
+          // rankSep: 70,
         },
       });
 
-      cy.minZoom(0.2);
-      cy.maxZoom(10);
+      // cy.minZoom(0.2);
+      // cy.maxZoom(10);
 
       cy.on('mouseover', 'node', function(e) {
         container.style.cursor = 'pointer';

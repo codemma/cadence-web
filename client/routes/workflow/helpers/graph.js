@@ -1,4 +1,4 @@
-import { findIndex } from 'lodash-es';
+import { findIndex, min, max } from 'lodash-es';
 import { getEventConnections } from './get-event-connections';
 
 class Graph {
@@ -15,7 +15,7 @@ class Graph {
    * Build a graph around the `node`
    */
   selectNode(selectedEventId = null) {
-    const N = 500;
+    const N = 100;
     // If the selected node index is within (S * 100)% of the middle of rendered slice,
     // we do not need to redraw the graph, just scroll to the node.
     const S = 0.6;
@@ -128,6 +128,7 @@ class Graph {
           childRoute: childRoute,
           newExecutionRunId: newExecutionRunId,
           status: status,
+          timestamp: event.timestamp.valueOf(),
         },
       });
     });
@@ -141,9 +142,76 @@ class Graph {
     //If the node is not referred to as a parent it should be connected back to the graph with a chron child
     events.forEach(node => {
       if (!parentArray.includes(node.eventId)) {
-        // setChron(node);
+        setChron(node);
       }
     });
+
+    // Arrange graph
+    const arrangeGraph = ({ nodes, edges }) => {
+      const idToNode = {};
+      const idToChildren = {};
+      // const timestampIndices = {};
+      const hasParent = {};
+      const rootNodes = [];
+
+      nodes.forEach((n, index) => {
+        idToNode[n.data.id] = n;
+        idToChildren[n.data.id] = [];
+
+        n.data.timestampIndex = index;
+        // if (timestampIndices[n.data.timestamp] === undefined) {
+        //   timestampIndices[n.data.timestamp] = Object.keys(
+        //     timestampIndices
+        //   ).length;
+        // }
+      });
+
+      for (const e of edges) {
+        idToChildren[e.data.source].push(idToNode[e.data.target]);
+        hasParent[e.data.target] = true;
+      }
+
+      for (const n of nodes) {
+        if (!hasParent[n.data.id]) {
+          rootNodes.push(n);
+        }
+      }
+
+      const LEVEL_STEP = 15;
+      const TIME_STEP = 50;
+
+      const arrange = (nodes, level, timestamp) => {
+        let currentLevel = level;
+
+        nodes.forEach((n, i) => {
+          n.position = {
+            x: currentLevel * LEVEL_STEP,
+            y: n.data.timestampIndex * TIME_STEP,
+          };
+
+          if (idToChildren[n.data.id].length) {
+            const { level: newLevel } = arrange(
+              idToChildren[n.data.id],
+              currentLevel
+            );
+
+            currentLevel = newLevel + 1;
+          }
+        });
+
+        return {
+          level: currentLevel,
+          timestamps: [],
+        };
+      };
+
+      arrange(rootNodes, 0, 0);
+
+      return { nodes, edges };
+    };
+
+    arrangeGraph({ nodes, edges });
+
     results.elements = [...nodes, ...edges];
 
     return results;
