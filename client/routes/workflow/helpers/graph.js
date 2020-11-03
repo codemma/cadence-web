@@ -1,4 +1,4 @@
-import { findIndex, min, max } from 'lodash-es';
+import { findIndex, orderBy, uniq } from 'lodash-es';
 import { getEventConnections } from './get-event-connections';
 
 class Graph {
@@ -15,7 +15,9 @@ class Graph {
    * Build a graph around the `node`
    */
   selectNode(selectedEventId = null) {
-    const N = 100;
+    const N = 300;
+    const enableChronologicalEdges = false;
+
     // If the selected node index is within (S * 100)% of the middle of rendered slice,
     // we do not need to redraw the graph, just scroll to the node.
     const S = 0.6;
@@ -133,39 +135,48 @@ class Graph {
       });
     });
 
-    //Set the direct and inferred relationships
+    // Set the direct and inferred relationships
     events.forEach(node => {
       setDirectAndInferred(node);
     });
 
-    //Set the chronological relationships.
-    //If the node is not referred to as a parent it should be connected back to the graph with a chron child
-    events.forEach(node => {
-      if (!parentArray.includes(node.eventId)) {
-        setChron(node);
-      }
-    });
+    // Set the chronological relationships.
+    // If the node is not referred to as a parent it should be connected back to the graph with a chron child
+    if (enableChronologicalEdges) {
+      events.forEach(node => {
+        if (!parentArray.includes(node.eventId)) {
+          setChron(node);
+        }
+      });
+    }
 
     // Arrange graph
     const arrangeGraph = ({ nodes, edges }) => {
       const idToNode = {};
       const idToChildren = {};
-      // const timestampIndices = {};
+      const timeIndices = {};
       const hasParent = {};
       const rootNodes = [];
 
+      // Iterate through nodes and set `timeIndex` and `timeIndexSecondary` for every node
+      // timeIndex is an index of the node timestamp in a sorted array of all timestamps
+      // Which is used to keep the chronogical order of nodes but discard the scale of time intervals
+      // when drawing the graph
       nodes.forEach((n, index) => {
         idToNode[n.data.id] = n;
         idToChildren[n.data.id] = [];
 
-        n.data.timestampIndex = index;
-        // if (timestampIndices[n.data.timestamp] === undefined) {
-        //   timestampIndices[n.data.timestamp] = Object.keys(
-        //     timestampIndices
-        //   ).length;
-        // }
+        if (timeIndices[n.data.timestamp] === undefined) {
+          const index = Object.keys(timeIndices).length;
+
+          timeIndices[n.data.timestamp] = index;
+        }
+
+        n.data.timeIndex = timeIndices[n.data.timestamp];
+        n.data.timeIndexSecondary = 0;
       });
 
+      // Find all roots (entry points with no parents) of the graph
       for (const e of edges) {
         idToChildren[e.data.source].push(idToNode[e.data.target]);
         hasParent[e.data.target] = true;
@@ -177,35 +188,104 @@ class Graph {
         }
       }
 
-      const LEVEL_STEP = 15;
-      const TIME_STEP = 50;
-
-      const arrange = (nodes, level, timestamp) => {
-        let currentLevel = level;
+      // Traverse the graph recursively and set `level` and `timeIndexSecondary` for all nodes
+      // Level is horizontal offset of the tree-like graph node arranged to avoid overlapping.
+      // `timeIndexSecondary` is secondary time coordinate:
+      //    there are two connected nodes: A -----> B
+      //    A.data.timeIndex === B.data.timeIndex
+      //  then we set
+      //    A.data.timeIndexSecondary = 0
+      //    B.data.timeIndexSecondary = 1
+      //  To display B node beflow the A node whilst they they have the same timestamp
+      const arrange = (
+        nodes,
+        level = 0,
+        parentTimeIndex = -1,
+        parentTimeIndexOffset = 0
+      ) => {
+        let l = level;
 
         nodes.forEach((n, i) => {
-          n.position = {
-            x: currentLevel * LEVEL_STEP,
-            y: n.data.timestampIndex * TIME_STEP,
-          };
+          if (i) {
+            ++l;
+          }
 
-          if (idToChildren[n.data.id].length) {
-            const { level: newLevel } = arrange(
-              idToChildren[n.data.id],
-              currentLevel
-            );
+          const children = idToChildren[n.data.id];
 
-            currentLevel = newLevel + 1;
+          if (n.data.level === undefined) {
+            n.data.level = l;
+            n.data.timeIndexSecondary =
+              parentTimeIndex === n.data.timeIndex
+                ? parentTimeIndexOffset + 1
+                : 0;
+
+            if (children.length) {
+              const { level: newLevel } = arrange(
+                children,
+                l,
+                n.data.timeIndex,
+                n.data.timeIndexSecondary
+              );
+
+              l = newLevel;
+            }
           }
         });
 
         return {
-          level: currentLevel,
-          timestamps: [],
+          level: l,
         };
       };
 
-      arrange(rootNodes, 0, 0);
+      // Arrange all nodes in the graph, starting from root entry points
+      arrange(rootNodes);
+
+      // Constants define the spacing of nodes in the graph
+      const LEVEL_STEP = 200; // Horizontal `x` offset between same level nodes
+      const TIME_STEP = 90; // Offset between primary chronological layers
+      const TIME_SHIFT = 55; // Offset between primary and secondary chronological layers (having the same timestamps)
+
+      // Calculate `tTimes` for all (timeIndex, timeIndexSecondary) pairs
+      // which are the time (Y) coordinates nodes in the graph
+      let t = 0;
+      let prevT1 = 0;
+      let prevT2 = 0;
+      const tTimes = {};
+      const times = orderBy(
+        nodes.map(n => ({
+          t1: n.data.timeIndex,
+          t2: n.data.timeIndexSecondary,
+        })),
+        ['t1', 't2']
+      );
+      const makeKey = (primary, secondary) => `${primary}-${secondary}`;
+
+      times.forEach(({ t1, t2 }) => {
+        const key = makeKey(t1, t2);
+
+        if (t1 === prevT1) {
+          t += (t2 - prevT2) * TIME_SHIFT;
+        }
+
+        t += (t1 - prevT1) * TIME_STEP;
+        prevT1 = t1;
+        prevT2 = t2;
+
+        tTimes[key] = t;
+      });
+
+      // Set the `position` for all nodes using the calculated `level` and `tTimes` values
+      nodes.forEach(n => {
+        const key = makeKey(n.data.timeIndex, n.data.timeIndexSecondary);
+
+        n.data.name = `${n.data.name} l:${n.data.level} ch:${
+          idToChildren[n.data.id].length
+        } t:${n.data.timeIndex}:${n.data.timeIndexSecondary}`;
+        n.position = {
+          x: n.data.level * LEVEL_STEP,
+          y: tTimes[key],
+        };
+      });
 
       return { nodes, edges };
     };
