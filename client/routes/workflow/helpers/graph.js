@@ -1,4 +1,4 @@
-import { findIndex, orderBy, uniq } from 'lodash-es';
+import { findIndex, orderBy } from 'lodash-es';
 import { getEventConnections } from './get-event-connections';
 
 class Graph {
@@ -278,9 +278,6 @@ class Graph {
       nodes.forEach(n => {
         const key = makeKey(n.data.timeIndex, n.data.timeIndexSecondary);
 
-        n.data.name = `${n.data.name} l:${n.data.level} ch:${
-          idToChildren[n.data.id].length
-        } t:${n.data.timeIndex}:${n.data.timeIndexSecondary}`;
         n.position = {
           x: n.data.level * LEVEL_STEP,
           y: tTimes[key],
