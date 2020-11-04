@@ -215,8 +215,8 @@ export default {
       this.history.loading = true;
       this.pqu = pagedQueryUrl;
       this.$http(pagedQueryUrl)
-        .then(res0 => {
-          const res = require('./demo-data/10k-raw.xjson');
+        .then(res => {
+          // const res = require('./demo-data/10k-raw.xjson');
 
           // eslint-disable-next-line no-underscore-dangle
           if (this._isDestroyed || this.pqu !== pagedQueryUrl) {
