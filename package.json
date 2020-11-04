@@ -40,7 +40,6 @@
     "babel-preset-env": "^1.7.0",
     "css-loader": "^0.28.7",
     "cytoscape": "^3.16.0",
-    "cytoscape-dagre": "^2.3.0",
     "d3": "^6.2.0",
     "deepmerge": "^2.0.0",
     "extract-text-webpack-plugin": "^3.0.1",

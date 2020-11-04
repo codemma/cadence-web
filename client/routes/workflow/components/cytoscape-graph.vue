@@ -5,14 +5,14 @@
 </template>
 
 <script>
-import dagre from 'cytoscape-dagre';
 import cytoscape from 'cytoscape';
 import omit from 'lodash-es/omit';
 import Graph from '../helpers/graph';
+import cytoscapeLayout, { LAYOUT_NAME } from '../helpers/cytoscape-layout';
 import graphStyles from '../helpers/graph-styles';
 import store from '../../../store/index';
 
-// cytoscape.use(dagre);
+cytoscape.use(cytoscapeLayout);
 
 export default {
   name: 'cytoscape-graph',
@@ -74,12 +74,10 @@ export default {
       this.cy.$(':selected').deselect();
 
       // Mark current node as selected
-      const node = id !== null ? this.cy.elements('node#' + id) : null;
+      const node =
+        id !== null && id !== undefined ? this.cy.nodes('node#' + id) : null;
 
-      if (!node || !node.length) {
-        // Display whole graph
-        this.cy.fit();
-      } else {
+      if (node && node.length) {
         // Zoom to the selected node
         node.select();
         this.updateChildBtn(node);
@@ -107,18 +105,12 @@ export default {
         style: graphStyles,
         elements,
         layout: {
-          name: 'preset',
-          // name: 'dagre',
-          // nodeDimensionsIncludeLabels: true,
-          // spacingFactor: 1.2, // to avoid node collision
-          // nodeSep: 230,
-          // edgeSep: 100,
-          // rankSep: 70,
+          name: LAYOUT_NAME,
         },
       });
 
-      // cy.minZoom(0.2);
-      // cy.maxZoom(10);
+      cy.minZoom(0.1);
+      cy.maxZoom(10);
 
       cy.on('mouseover', 'node', function(e) {
         container.style.cursor = 'pointer';
@@ -129,11 +121,11 @@ export default {
 
       const self = this;
 
-      //Register click event
+      // Register click event
       cy.on('tap', function(evt) {
         const evtTarget = evt.target;
 
-        //Tap on background
+        // Tap on background
         if (evtTarget === cy) {
           if (self.$route.query.eventId) {
             self.$router.replace({
@@ -141,7 +133,7 @@ export default {
             });
             store.commit('toggleChildBtn');
           }
-          //Tap on a node that is not already selected
+          // Tap on a node that is not already selected
         } else if (evtTarget.isNode() && !evtTarget.selected()) {
           const nodeData = evtTarget.data();
 
@@ -152,8 +144,14 @@ export default {
       });
       cy.mount(container);
       this.cy = cy;
+      this.cy.fit();
     },
     updateView(id = null) {
+      if (this.cy && id === null) {
+        // Do nothing if graph is rendered and user clicks somewhere between nodes
+        return;
+      }
+
       const {
         shouldRedraw,
         elements,
